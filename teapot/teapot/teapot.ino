@@ -1,41 +1,65 @@
-const int m2  = 13;
-const int m5  = 12;
-const int m10 = 14;
-const int p1  = 27;
-const int p3  = 26;
-const int p4  = 25;
-const int p6  = 33;
-const int p7  = 32;
-const int p8  = 22;
-const int p9  = 23;
-const int term  = 34;
-const int button1 = 19;
-const int button2 = 21;
-const int led1 = 18;
-const int led2 = 5;
+const uint8_t m2  = 13;
+const uint8_t m5  = 12;
+const uint8_t m10 = 14;
+const uint8_t p1  = 27;
+const uint8_t p3  = 26;
+const uint8_t p4  = 25;
+const uint8_t p6  = 33;
+const uint8_t p7  = 32;
+const uint8_t p8  = 22;
+const uint8_t p9  = 23;
 
-const int zero[]  = {p1, p3, p4, p6, p7, p8};
-const int one[]   = {p3, p8};
-const int two[]   = {p1, p3, p9, p6, p7};
-const int three[] = {p1, p4, p9, p6, p7};
-const int four[]  = {p8, p9, p6, p4};
-const int five[]  = {p1, p4, p9, p8, p7};
-const int six[]   = {p1, p3, p4, p9, p8, p7};
-const int seven[] = {p4, p6, p7};
-const int eight[] = {p1, p3, p4, p6, p7, p8, p9};
-const int nine[]  = {p4, p6, p7, p8, p9};
+const uint8_t term  = 35;
+const uint8_t src  = 17;
+const uint8_t rel  = 4;
+const uint8_t buzz  = 16;
 
-const int* numbers[] = {zero, one, two, three, four, five, six, seven, eight, nine};
-const int sizes[] = {6, 2, 5, 5, 4, 5, 6, 3, 7, 5};
+const uint8_t button1 = 19;
+const uint8_t button2 = 21;
+const uint8_t led1 = 18;
+const uint8_t led2 = 5;
 
-const int delayTime = 1;
-volatile int number = 0;
-const int stepsPerDegree = 33;
-const int sensorOffset = 4550;
+const uint8_t zero[]  = {p1, p3, p4, p6, p7, p8};
+const uint8_t one[]   = {p3, p8};
+const uint8_t two[]   = {p1, p3, p9, p6, p7};
+const uint8_t three[] = {p1, p4, p9, p6, p7};
+const uint8_t four[]  = {p8, p9, p6, p4};
+const uint8_t five[]  = {p1, p4, p9, p8, p7};
+const uint8_t six[]   = {p1, p3, p4, p9, p8, p7};
+const uint8_t seven[] = {p4, p6, p7};
+const uint8_t eight[] = {p1, p3, p4, p6, p7, p8, p9};
+const uint8_t nine[]  = {p4, p6, p7, p8, p9};
+
+const uint8_t* numbers[] = {zero, one, two, three, four, five, six, seven, eight, nine};
+const uint8_t sizes[] = {6, 2, 5, 5, 4, 5, 6, 3, 7, 5};
+
+
+const uint8_t stepsPerDegree = 33;
+const uint16_t sensorOffset = 4550;
 volatile bool b1Pressed = false;
 volatile bool b2Pressed = false;
 volatile unsigned long lastInterrupt1 = 0;
 volatile unsigned long lastInterrupt2 = 0;
+
+enum class State :uint8_t
+{
+  Idle = 0,
+  ShowTemperature,
+  SetTemprature,
+  PrepareBoiling,
+  Boiling,
+  FinishBoiling
+};
+
+State state = State::ShowTemperature;
+bool showTemperature = true;
+uint8_t temperature = 0;
+uint8_t desiredTemperature = 0;
+unsigned long before = 0;
+int b1PressedTimes = 0;
+const uint8_t temperatures[] = {40, 50, 60, 70};
+const uint8_t predefTemperaturesCount = 4;
+uint8_t selectedTemperature = 0;
 
 //-------------------------------------------------------------
 void clearPines()
@@ -68,7 +92,12 @@ void setPin(int pin)
 //-------------------------------------------------------------
 void drawNumber()
 {
-  int hundreds = number / 100;
+  if (!showTemperature)
+  {
+    return;
+  }
+  
+  int hundreds = temperature / 100;
   if (hundreds > 0)
   {
     clearPines();
@@ -78,9 +107,9 @@ void drawNumber()
       setPin(numbers[hundreds][i]);
     }
   }
-  delay(delayTime);
+  delay(1);
   
-  int tens = (number / 10) % 10;
+  int tens = (temperature / 10) % 10;
   clearPines();
   if (hundreds >= 1 || tens > 0)
   {
@@ -90,16 +119,16 @@ void drawNumber()
      setPin(numbers[tens][i]);
     }
   }
-  delay(delayTime);
+  delay(1);
   
-  int ones = number % 10;
+  int ones = temperature % 10;
   clearPines();
   GPIO.out_w1tc = 1 << m5;
   for (int i = 0; i < sizes[ones]; i++)
   {
     setPin(numbers[ones][i]);
   }
-  delay(delayTime);
+  delay(1);
 }
 
 //-------------------------------------------------------------
@@ -139,6 +168,25 @@ void button2Press()
 }
 
 //-------------------------------------------------------------
+void askSensor()
+{
+  int sensor = analogRead(term);
+  temperature = abs(sensorOffset - sensor) / stepsPerDegree;
+}
+
+//-------------------------------------------------------------
+void led1On() { GPIO.out_w1ts = 1 << led1; }
+void led1Off(){ GPIO.out_w1tc = 1 << led1; }
+void led2On() { GPIO.out_w1ts = 1 << led2; }
+void led2Off(){ GPIO.out_w1tc = 1 << led2; }
+void srcOn()  { GPIO.out_w1ts = 1 << src; }
+void srcOff() { GPIO.out_w1tc = 1 << src; }
+void relOn()  { GPIO.out_w1ts = 1 << rel; }
+void relOff() { GPIO.out_w1tc = 1 << rel; }
+void buzzOn() { GPIO.out_w1ts = 1 << buzz; }
+void buzzOff(){ GPIO.out_w1tc = 1 << buzz; }
+
+//-------------------------------------------------------------
 void setup() 
 {
   pinMode(m2, OUTPUT);
@@ -165,29 +213,136 @@ void setup()
   Serial.begin(115200);
 }
 
+//-------------------------------------------------------------
 void loop() 
 {
-    //-- ask sensor
-    int sensor = analogRead(term);
-    number = abs(sensorOffset - sensor) / stepsPerDegree;
+    
 
-    //-- ask buttons
-    if (b1Pressed)
+    unsigned long now = millis();
+    
+    switch (state)
     {
-      GPIO.out_w1ts = 1 << led1;
+      case State::Idle:
+      {
+        if (b1Pressed || b2Pressed)
+        {
+            state = State::ShowTemperature;
+            b1Pressed = false;
+            b2Pressed = false;
+        }
+        
+        break;
+      }
+      case State::ShowTemperature:
+      {
+        
+        if (now - before < 3000)
+        {
+          askSensor();
+          showTemperature = true;
+          if (b1Pressed)
+          {
+            state = State::PrepareBoiling;
+            desiredTemperature = 100;
+            led1On();
+            before = now;
+            b1Pressed = false;
+          }
+          else
+          {
+            if (b2Pressed)
+            {
+              state = State::SetTemprature;
+              before = now;
+              b2Pressed = false;
+            }
+          }
+        }
+        else
+        {
+          showTemperature = false;
+          before = now;
+          state = State::Idle;
+        }
+        break;
+      }
+      case State::SetTemprature:
+      {
+        desiredTemperature = temperatures[selectedTemperature];
+        temperature = temperatures[selectedTemperature];
+        showTemperature = true;
+        
+        if (now - before < 1000)
+        {
+            selectedTemperature ++;
+            if (selectedTemperature > predefTemperaturesCount)
+            {
+              selectedTemperature = 0;
+            }
+            
+            before = now;
+        }
+        else
+        {
+          if (now - before > 3000)
+          {
+            state = State::PrepareBoiling;
+            led1Off();
+            led2On();
+            before = now;
+          } 
+        }
+        break;
+      }
+      case State::PrepareBoiling:
+      {
+        buzzOn();
+        if (now - before > 100)
+        {
+          state = State::Boiling;
+          relOn();
+          before = now;
+          buzzOff();
+        }
+        break;
+      }
+      case State::Boiling:
+      {
+        askSensor();
+        showTemperature = true;
+ 
+        if (digitalRead(button1))
+        {
+          b1PressedTimes ++;
+          b1Pressed = false;
+        }
+        else
+        {
+          b1PressedTimes = 0;
+        }
+        
+        if (temperature >= desiredTemperature || b1PressedTimes > 1000)
+        {
+          state = State::FinishBoiling;
+          relOff();
+          before = now;
+          b1PressedTimes = 0;
+          b1Pressed = false;
+        }
+        
+        break;
+      }
+      case State::FinishBoiling:
+      {
+        if (now - before > 100)
+        {
+          state = State::ShowTemperature;
+          srcOff();
+          led1Off();
+          led2Off();
+          before = now;
+        }
+        break;
+      }
     }
-    else
-    {
-      GPIO.out_w1tc = 1 << led1;
-    }
-
-    if (b2Pressed)
-    {
-      GPIO.out_w1ts = 1 << led2;
-    }
-    else
-    {
-      GPIO.out_w1tc = 1 << led2;
-    }
-
 }
