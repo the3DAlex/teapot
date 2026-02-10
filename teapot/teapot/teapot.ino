@@ -1,3 +1,4 @@
+#define DEBUG
 const uint8_t m2  = 13;
 const uint8_t m5  = 12;
 const uint8_t m10 = 14;
@@ -36,8 +37,11 @@ const uint8_t sizes[] = {6, 2, 5, 5, 4, 5, 6, 3, 7, 5};
 
 const uint8_t stepsPerDegree = 33;
 const uint16_t sensorOffset = 4550;
-volatile bool b1Pressed = false;
-volatile bool b2Pressed = false;
+bool led1Status = false;
+bool led2Status = false;
+bool relStatus = false;
+bool srcStatus = false;
+bool buzzStatus = false;
 volatile unsigned long lastInterrupt1 = 0;
 volatile unsigned long lastInterrupt2 = 0;
 
@@ -56,6 +60,7 @@ bool showTemperature = true;
 uint8_t temperature = 0;
 uint8_t desiredTemperature = 0;
 unsigned long before = 0;
+unsigned long debugOutput = 0;
 int b1PressedTimes = 0;
 const uint8_t temperatures[] = {40, 50, 60, 70};
 const uint8_t predefTemperaturesCount = 4;
@@ -142,32 +147,6 @@ void myTask(void *pvParameters)
 }
 
 //-------------------------------------------------------------
-void button1Press() 
-{
-  unsigned long now = millis();
-
-  if (now - lastInterrupt1 > 50) 
-  {
-    b1Pressed = !b1Pressed;
-    b2Pressed = false;
-    lastInterrupt1 = now;
-  }
-}
-
-//-------------------------------------------------------------
-void button2Press() 
-{
-  unsigned long now = millis();
-
-  if (now - lastInterrupt1 > 50) 
-    {
-    b2Pressed = !b2Pressed;
-    b1Pressed = false;
-    lastInterrupt2 = now;
-  }
-}
-
-//-------------------------------------------------------------
 void askSensor()
 {
   int sensor = analogRead(term);
@@ -175,16 +154,28 @@ void askSensor()
 }
 
 //-------------------------------------------------------------
-void led1On() { GPIO.out_w1ts = 1 << led1; }
-void led1Off(){ GPIO.out_w1tc = 1 << led1; }
-void led2On() { GPIO.out_w1ts = 1 << led2; }
-void led2Off(){ GPIO.out_w1tc = 1 << led2; }
-void srcOn()  { GPIO.out_w1ts = 1 << src; }
-void srcOff() { GPIO.out_w1tc = 1 << src; }
-void relOn()  { GPIO.out_w1ts = 1 << rel; }
-void relOff() { GPIO.out_w1tc = 1 << rel; }
-void buzzOn() { GPIO.out_w1ts = 1 << buzz; }
-void buzzOff(){ GPIO.out_w1tc = 1 << buzz; }
+bool askB1()
+{
+  return !digitalRead(button1);
+}
+
+//-------------------------------------------------------------
+bool askB2()
+{
+  return !digitalRead(button2);
+}
+
+//-------------------------------------------------------------
+void led1On() { GPIO.out_w1ts = 1 << led1; led1Status = true;}
+void led1Off(){ GPIO.out_w1tc = 1 << led1; led1Status = false;}
+void led2On() { GPIO.out_w1ts = 1 << led2; led2Status = true;}
+void led2Off(){ GPIO.out_w1tc = 1 << led2; led2Status = false;}
+void srcOn()  { GPIO.out_w1ts = 1 << src; srcStatus = true;}
+void srcOff() { GPIO.out_w1tc = 1 << src; srcStatus = false;}
+void relOn()  { GPIO.out_w1ts = 1 << rel; relStatus = true;}
+void relOff() { GPIO.out_w1tc = 1 << rel; relStatus = false;}
+void buzzOn() { GPIO.out_w1ts = 1 << buzz; buzzStatus = true;}
+void buzzOff(){ GPIO.out_w1tc = 1 << buzz; buzzStatus = false;}
 
 //-------------------------------------------------------------
 void setup() 
@@ -207,54 +198,49 @@ void setup()
   
   xTaskCreatePinnedToCore(myTask, "myTask", 4096, NULL, 1, NULL, 0);
 
-  attachInterrupt(digitalPinToInterrupt(button1), button1Press, FALLING);
-  attachInterrupt(digitalPinToInterrupt(button2), button2Press, FALLING);
-  
+#ifdef DEBUG:  
   Serial.begin(115200);
+#endif
 }
 
 //-------------------------------------------------------------
 void loop() 
 {
-    
-
     unsigned long now = millis();
     
     switch (state)
     {
       case State::Idle:
       {
-        if (b1Pressed || b2Pressed)
+        if (askB1() || askB2())
         {
             state = State::ShowTemperature;
-            b1Pressed = false;
-            b2Pressed = false;
+            before = now;
         }
-        
         break;
       }
       case State::ShowTemperature:
       {
-        
-        if (now - before < 3000)
+        if (now - before < 5000)
         {
           askSensor();
           showTemperature = true;
-          if (b1Pressed)
-          {
-            state = State::PrepareBoiling;
-            desiredTemperature = 100;
-            led1On();
-            before = now;
-            b1Pressed = false;
-          }
-          else
-          {
-            if (b2Pressed)
+          if (now - before > 1000)
+          { 
+            if (askB1())
             {
-              state = State::SetTemprature;
+              state = State::PrepareBoiling;
+              desiredTemperature = 100;
+              led1On();
               before = now;
-              b2Pressed = false;
+            }
+            else
+            {
+              if (askB2())
+              {
+                state = State::SetTemprature;
+                before = now;
+              }
             }
           }
         }
@@ -272,32 +258,33 @@ void loop()
         temperature = temperatures[selectedTemperature];
         showTemperature = true;
         
-        if (now - before < 1000)
+        if (now - before > 1000)
         {
+          if (askB2())
+          {
             selectedTemperature ++;
-            if (selectedTemperature > predefTemperaturesCount)
+            if (selectedTemperature >= predefTemperaturesCount)
             {
               selectedTemperature = 0;
             }
-            
             before = now;
+          }
         }
-        else
+        
+        if (now - before > 5000)
         {
-          if (now - before > 3000)
-          {
-            state = State::PrepareBoiling;
-            led1Off();
-            led2On();
-            before = now;
-          } 
-        }
+          state = State::PrepareBoiling;
+          led1Off();
+          led2On();
+          before = now;
+        } 
         break;
       }
       case State::PrepareBoiling:
       {
         buzzOn();
-        if (now - before > 100)
+        srcOn();
+        if (now - before > 1000)
         {
           state = State::Boiling;
           relOn();
@@ -311,38 +298,99 @@ void loop()
         askSensor();
         showTemperature = true;
  
-        if (digitalRead(button1))
+        if (askB1())
         {
           b1PressedTimes ++;
-          b1Pressed = false;
         }
         else
         {
           b1PressedTimes = 0;
         }
         
-        if (temperature >= desiredTemperature || b1PressedTimes > 1000)
+        if (temperature >= desiredTemperature || b1PressedTimes > 10000)
         {
           state = State::FinishBoiling;
           relOff();
           before = now;
           b1PressedTimes = 0;
-          b1Pressed = false;
         }
         
         break;
       }
       case State::FinishBoiling:
       {
-        if (now - before > 100)
+        buzzOn();
+        if (now - before > 1000)
         {
+          desiredTemperature = 0;
           state = State::ShowTemperature;
           srcOff();
           led1Off();
           led2Off();
+          buzzOff();
           before = now;
         }
         break;
       }
     }
+
+#ifdef DEBUG:
+    if (now - debugOutput > 1000)
+    {
+      Serial.print("Temperature: ");
+      Serial.print(temperature);
+      Serial.print(" : ");
+      Serial.print(showTemperature);
+      Serial.print(" || Desired Temperature: ");
+      Serial.print(desiredTemperature);
+      Serial.print(" || b1 Pressed Times: ");
+      Serial.print(b1PressedTimes);
+      Serial.print(" || src: ");
+      Serial.print(srcStatus);
+      Serial.print(" || rel: ");
+      Serial.print(relStatus);
+      Serial.print(" || led1: ");
+      Serial.print(led1Status);
+      Serial.print(" || led2: ");
+      Serial.print(led2Status);
+      Serial.print(" || buzz: ");
+      Serial.print(buzzStatus);
+      Serial.print(" || state: ");
+      switch (state)
+      {
+        case State::Idle:
+        {
+          Serial.println("Idle");
+          break;
+        }
+        case State::ShowTemperature:
+        {
+          Serial.println("ShowTemperature");
+          break;
+        }
+        case State::SetTemprature:
+        {
+          Serial.println("SetTemprature");
+          break;
+        }
+        case State::PrepareBoiling:
+        {
+          Serial.println("PrepareBoiling");
+          break;
+        }
+        case State::Boiling:
+        {
+          Serial.println("Boiling");
+          break;
+        }
+        case State::FinishBoiling:
+        {
+          Serial.println("FinishBoiling");
+          break;
+        }
+      }
+      debugOutput = now;
+    }
+#endif
+
 }
