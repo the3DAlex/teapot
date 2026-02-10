@@ -1,4 +1,4 @@
-#define DEBUG
+//#define DEBUG
 const uint8_t m2  = 13;
 const uint8_t m5  = 12;
 const uint8_t m10 = 14;
