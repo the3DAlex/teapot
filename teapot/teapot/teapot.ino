@@ -1,24 +1,24 @@
 //#define DEBUG
-const uint8_t m2  = 13;
-const uint8_t m5  = 12;
-const uint8_t m10 = 14;
-const uint8_t p1  = 27;
-const uint8_t p3  = 26;
-const uint8_t p4  = 25;
-const uint8_t p6  = 33;
-const uint8_t p7  = 32;
-const uint8_t p8  = 22;
-const uint8_t p9  = 23;
+const uint8_t m2  = 12;
+const uint8_t m5  = 26;
+const uint8_t m10 = 23;
+const uint8_t p1  = 13;
+const uint8_t p3  = 14;
+const uint8_t p4  = 27;
+const uint8_t p6  = 32;
+const uint8_t p7  = 33;
+const uint8_t p8  = 25;
+const uint8_t p9  = 22;
 
 const uint8_t term  = 35;
 const uint8_t src  = 17;
 const uint8_t rel  = 4;
 const uint8_t buzz  = 16;
 
-const uint8_t button1 = 19;
-const uint8_t button2 = 21;
-const uint8_t led1 = 18;
-const uint8_t led2 = 5;
+const uint8_t button1 = 21;
+const uint8_t button2 = 19;
+const uint8_t led1 = 5;
+const uint8_t led2 = 18;
 
 const uint8_t zero[]  = {p1, p3, p4, p6, p7, p8};
 const uint8_t one[]   = {p3, p8};
@@ -66,6 +66,10 @@ const uint8_t temperatures[] = {40, 50, 60, 70};
 const uint8_t predefTemperaturesCount = 4;
 uint8_t selectedTemperature = 0;
 
+const int channel = 0;
+const int freq = 3000;
+const int resolution = 8; 
+
 //-------------------------------------------------------------
 void clearPines()
 {
@@ -97,6 +101,7 @@ void setPin(int pin)
 //-------------------------------------------------------------
 void drawNumber()
 {
+  clearPines();
   if (!showTemperature)
   {
     return;
@@ -112,7 +117,7 @@ void drawNumber()
       setPin(numbers[hundreds][i]);
     }
   }
-  delay(1);
+  delay(8);
   
   int tens = (temperature / 10) % 10;
   clearPines();
@@ -124,7 +129,7 @@ void drawNumber()
      setPin(numbers[tens][i]);
     }
   }
-  delay(1);
+   delay(8);
   
   int ones = temperature % 10;
   clearPines();
@@ -133,7 +138,7 @@ void drawNumber()
   {
     setPin(numbers[ones][i]);
   }
-  delay(1);
+  delay(8);
 }
 
 //-------------------------------------------------------------
@@ -166,16 +171,16 @@ bool askB2()
 }
 
 //-------------------------------------------------------------
-void led1On() { GPIO.out_w1ts = 1 << led1; led1Status = true;}
-void led1Off(){ GPIO.out_w1tc = 1 << led1; led1Status = false;}
-void led2On() { GPIO.out_w1ts = 1 << led2; led2Status = true;}
-void led2Off(){ GPIO.out_w1tc = 1 << led2; led2Status = false;}
-void srcOn()  { GPIO.out_w1ts = 1 << src; srcStatus = true;}
-void srcOff() { GPIO.out_w1tc = 1 << src; srcStatus = false;}
-void relOn()  { GPIO.out_w1ts = 1 << rel; relStatus = true;}
-void relOff() { GPIO.out_w1tc = 1 << rel; relStatus = false;}
-void buzzOn() { GPIO.out_w1ts = 1 << buzz; buzzStatus = true;}
-void buzzOff(){ GPIO.out_w1tc = 1 << buzz; buzzStatus = false;}
+void led1On() { GPIO.out_w1ts = 1 << led1; led1Status = true; }
+void led1Off(){ GPIO.out_w1tc = 1 << led1; led1Status = false; }
+void led2On() { GPIO.out_w1ts = 1 << led2; led2Status = true; }
+void led2Off(){ GPIO.out_w1tc = 1 << led2; led2Status = false; }
+void srcOn()  { GPIO.out_w1ts = 1 << src; srcStatus = true; }
+void srcOff() { GPIO.out_w1tc = 1 << src; srcStatus = false; }
+void relOn()  { GPIO.out_w1ts = 1 << rel; relStatus = true; }
+void relOff() { GPIO.out_w1tc = 1 << rel; relStatus = false; }
+void buzzOn() { ledcWrite(channel, 128); buzzStatus = true; }
+void buzzOff(){ ledcWrite(channel, 0); buzzStatus = false; }
 
 //-------------------------------------------------------------
 void setup() 
@@ -195,9 +200,14 @@ void setup()
   pinMode(button2, INPUT_PULLUP);
   pinMode(led1, OUTPUT);
   pinMode(led2, OUTPUT);
-  
+  pinMode(src, OUTPUT);
+  pinMode(rel, OUTPUT);
+  pinMode(buzz, OUTPUT);
   xTaskCreatePinnedToCore(myTask, "myTask", 4096, NULL, 1, NULL, 0);
 
+  ledcSetup(channel, freq, resolution);
+  ledcAttachPin(buzz, channel);
+  
 #ifdef DEBUG:  
   Serial.begin(115200);
 #endif
@@ -217,6 +227,7 @@ void loop()
             state = State::ShowTemperature;
             before = now;
         }
+        
         break;
       }
       case State::ShowTemperature:
