@@ -35,8 +35,8 @@ const uint8_t* numbers[] = {zero, one, two, three, four, five, six, seven, eight
 const uint8_t sizes[] = {6, 2, 5, 5, 4, 5, 6, 3, 7, 5};
 
 
-const uint8_t stepsPerDegree = 33;
-const uint16_t sensorOffset = 4550;
+const uint8_t stepsPerDegree = 30;
+const uint16_t sensorOffset = 4450;
 bool led1Status = false;
 bool led2Status = false;
 bool relStatus = false;
@@ -57,7 +57,8 @@ enum class State :uint8_t
 
 State state = State::ShowTemperature;
 bool showTemperature = true;
-uint8_t temperature = 0;
+float temperature = 0;
+float measuredTemperature = 0;
 uint8_t desiredTemperature = 0;
 unsigned long before = 0;
 unsigned long debugOutput = 0;
@@ -106,8 +107,8 @@ void drawNumber()
   {
     return;
   }
-  
-  int hundreds = temperature / 100;
+  int t = int(temperature);
+  int hundreds = t / 100;
   if (hundreds > 0)
   {
     clearPines();
@@ -119,7 +120,7 @@ void drawNumber()
   }
   delay(8);
   
-  int tens = (temperature / 10) % 10;
+  int tens = (t / 10) % 10;
   clearPines();
   if (hundreds >= 1 || tens > 0)
   {
@@ -131,7 +132,7 @@ void drawNumber()
   }
    delay(8);
   
-  int ones = temperature % 10;
+  int ones = t % 10;
   clearPines();
   GPIO.out_w1tc = 1 << m5;
   for (int i = 0; i < sizes[ones]; i++)
@@ -155,7 +156,7 @@ void myTask(void *pvParameters)
 void askSensor()
 {
   int sensor = analogRead(term);
-  temperature = abs(sensorOffset - sensor) / stepsPerDegree;
+  measuredTemperature = abs(sensorOffset - sensor) / stepsPerDegree;
 }
 
 //-------------------------------------------------------------
@@ -216,6 +217,8 @@ void setup()
 //-------------------------------------------------------------
 void loop() 
 {
+    temperature = temperature + (measuredTemperature - temperature) * 0.0001f;
+  
     unsigned long now = millis();
     
     switch (state)
