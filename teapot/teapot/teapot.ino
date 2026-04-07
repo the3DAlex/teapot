@@ -59,7 +59,7 @@ State state = State::ShowTemperature;
 bool showTemperature = true;
 float temperature = 0;
 float measuredTemperature = 0;
-uint8_t desiredTemperature = 0;
+float desiredTemperature = 0;
 unsigned long before = 0;
 unsigned long debugOutput = 0;
 int b1PressedTimes = 0;
@@ -70,7 +70,8 @@ uint8_t selectedTemperature = 0;
 const int channel = 0;
 const int freq = 3000;
 const int resolution = 8; 
-
+const int delayForSegments = 2;
+const float lerpSpeed = 0.0005f;
 //-------------------------------------------------------------
 void clearPines()
 {
@@ -100,6 +101,20 @@ void setPin(int pin)
 }
 
 //-------------------------------------------------------------
+void clearPin(int pin)
+{
+  if (pin < 32)
+  {
+    GPIO.out_w1tc = 1 << pin;
+  }
+  else
+  {
+    GPIO.out1_w1tc.val = 1 << (pin - 32);
+  }
+}
+
+
+//-------------------------------------------------------------
 void drawNumber()
 {
   clearPines();
@@ -111,35 +126,40 @@ void drawNumber()
   int hundreds = t / 100;
   if (hundreds > 0)
   {
-    clearPines();
     GPIO.out_w1tc = 1 << m2;
     for (int i = 0; i < sizes[hundreds]; i++)
     {
       setPin(numbers[hundreds][i]);
+      delay(delayForSegments);
+      clearPin(numbers[hundreds][i]);
     }
+    GPIO.out_w1ts = 1 << m2;
   }
-  delay(8);
+ 
   
   int tens = (t / 10) % 10;
-  clearPines();
+
   if (hundreds >= 1 || tens > 0)
   {
     GPIO.out_w1tc = 1 << m10;
     for (int i = 0; i < sizes[tens]; i++)
     {
      setPin(numbers[tens][i]);
+     delay(delayForSegments);
+     clearPin(numbers[tens][i]);
     }
+    GPIO.out_w1ts = 1 << m10;
   }
-   delay(8);
   
   int ones = t % 10;
-  clearPines();
   GPIO.out_w1tc = 1 << m5;
   for (int i = 0; i < sizes[ones]; i++)
   {
     setPin(numbers[ones][i]);
+    delay(delayForSegments);
+    clearPin(numbers[ones][i]);
   }
-  delay(8);
+  GPIO.out_w1ts = 1 << m5;
 }
 
 //-------------------------------------------------------------
@@ -156,7 +176,7 @@ void myTask(void *pvParameters)
 void askSensor()
 {
   int sensor = analogRead(term);
-  measuredTemperature = abs(sensorOffset - sensor) / stepsPerDegree;
+  measuredTemperature = float(abs(sensorOffset - sensor) / stepsPerDegree);
 }
 
 //-------------------------------------------------------------
@@ -215,10 +235,14 @@ void setup()
 }
 
 //-------------------------------------------------------------
+void lerpTemperature()
+{
+  temperature = (1.0f - lerpSpeed) * temperature + measuredTemperature * lerpSpeed;
+}
+
+//-------------------------------------------------------------
 void loop() 
 {
-    temperature = temperature + (measuredTemperature - temperature) * 0.0001f;
-  
     unsigned long now = millis();
     
     switch (state)
@@ -235,7 +259,8 @@ void loop()
       }
       case State::ShowTemperature:
       {
-        if (now - before < 5000)
+        lerpTemperature();
+        if (now - before < 10000)
         {
           askSensor();
           showTemperature = true;
@@ -244,7 +269,7 @@ void loop()
             if (askB1())
             {
               state = State::PrepareBoiling;
-              desiredTemperature = 100;
+              desiredTemperature = 100.0f;
               led1On();
               before = now;
             }
@@ -268,8 +293,8 @@ void loop()
       }
       case State::SetTemprature:
       {
-        desiredTemperature = temperatures[selectedTemperature];
-        temperature = temperatures[selectedTemperature];
+        desiredTemperature = float(temperatures[selectedTemperature]);
+        temperature = float(temperatures[selectedTemperature]);
         showTemperature = true;
         
         if (now - before > 1000)
@@ -310,9 +335,10 @@ void loop()
       case State::Boiling:
       {
         askSensor();
+        lerpTemperature();
         showTemperature = true;
  
-        if (askB1())
+        if (askB1() || askB2())
         {
           b1PressedTimes ++;
         }
